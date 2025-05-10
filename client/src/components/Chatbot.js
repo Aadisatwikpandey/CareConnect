@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import '../App.css';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faComments, faPaperPlane, faTimes } from '@fortawesome/free-solid-svg-icons';
+import axios from 'axios';
 
 const Chatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { type: 'bot', text: 'Hi! I\'m your CareConnect assistant. How can I help you today?' }
+    { 
+      type: 'bot', 
+      text: 'Hi! I\'m your CareConnect assistant. How can I help you today? I can help you with:\n• Finding suitable healthcare professionals\n• Emergency medical advice\n• Booking appointments\n• Understanding our services' 
+    }
   ]);
   const [input, setInput] = useState('');
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [error, setError] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
-  const ws = useRef(null);
   const messagesEndRef = useRef(null);
 
-  // Auto-scroll to bottom of messages
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -22,75 +23,51 @@ const Chatbot = () => {
     scrollToBottom();
   }, [messages]);
 
-  // WebSocket connection management
-  useEffect(() => {
-    if (isOpen && !ws.current) {
-      connectToOllama();
-    }
-    return () => {
-      if (ws.current) {
-        ws.current.close();
-        ws.current = null;
-      }
-    };
-  }, [isOpen]);
-
-  const connectToOllama = async () => {
-    try {
-      setIsConnecting(true);
-      setError(null);
-      
-      ws.current = new WebSocket('ws://localhost:3001');
-      
-      ws.current.onopen = () => {
-        setIsConnecting(false);
-        console.log('Connected to Ollama');
-      };
-
-      ws.current.onmessage = (event) => {
-        try {
-          const response = JSON.parse(event.data);
-          setIsTyping(false);
-          setMessages(prev => [...prev, { type: 'bot', text: response.message }]);
-        } catch (err) {
-          console.error('Error parsing message:', err);
-          setError('Failed to process the response');
-        }
-      };
-
-      ws.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setError('Failed to connect to the chat service');
-        setIsConnecting(false);
-      };
-
-      ws.current.onclose = () => {
-        console.log('Disconnected from Ollama');
-        ws.current = null;
-        setIsConnecting(false);
-      };
-
-    } catch (err) {
-      console.error('Connection error:', err);
-      setError('Failed to establish connection');
-      setIsConnecting(false);
-    }
-  };
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!input.trim() || !ws.current || ws.current.readyState !== WebSocket.OPEN) return;
+    if (!input.trim()) return;
 
+    // Add user message to chat
     const userMessage = { type: 'user', text: input };
     setMessages(prev => [...prev, userMessage]);
     setIsTyping(true);
-    
+    setInput('');
+
     try {
-      ws.current.send(JSON.stringify({ message: input }));
-      setInput('');
-    } catch (err) {
-      console.error('Error sending message:', err);
-      setError('Failed to send message');
+      // Send message to API
+      const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful healthcare assistant for CareConnect, a platform that connects patients with healthcare professionals. You help users find appropriate care, provide basic medical information, and assist with booking appointments. Always remind users to seek professional medical help for serious conditions."
+          },
+          {
+            role: "user",
+            content: input
+          }
+        ]
+      }, {
+        headers: {
+          'Authorization': `Bearer ${process.env.REACT_APP_OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      // Add API response to chat
+      if (response.data.choices && response.data.choices[0]) {
+        setMessages(prev => [...prev, {
+          type: 'bot',
+          text: response.data.choices[0].message.content
+        }]);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setMessages(prev => [...prev, {
+        type: 'bot',
+        text: 'I apologize, but I encountered an error. Please try again or contact our support team.'
+      }]);
+    } finally {
       setIsTyping(false);
     }
   };
@@ -109,30 +86,23 @@ const Chatbot = () => {
         onClick={() => setIsOpen(true)}
         aria-label="Open chat"
       >
-        <i className="fas fa-comments"></i>
+        <FontAwesomeIcon icon={faComments} />
       </button>
     );
   }
 
   return (
-    <div className="chat-container" style={{ display: 'flex' }}>
+    <div className="chat-container">
       <div className="chat-header">
         <h3>CareConnect Assistant</h3>
-        <i 
-          className="fas fa-times" 
+        <FontAwesomeIcon 
+          icon={faTimes} 
           onClick={() => setIsOpen(false)}
           style={{ cursor: 'pointer' }}
-        ></i>
+        />
       </div>
 
       <div className="chat-messages">
-        {error && (
-          <div className="error-message">
-            {error}
-            <button onClick={connectToOllama}>Retry</button>
-          </div>
-        )}
-        
         {messages.map((message, index) => (
           <div 
             key={index} 
@@ -162,13 +132,12 @@ const Chatbot = () => {
           onChange={(e) => setInput(e.target.value)}
           onKeyPress={handleKeyPress}
           placeholder="Type your message..."
-          disabled={isConnecting}
         />
         <button 
           type="submit" 
-          disabled={isConnecting || !input.trim()}
+          disabled={!input.trim()}
         >
-          <i className="fas fa-paper-plane"></i>
+          <FontAwesomeIcon icon={faPaperPlane} />
         </button>
       </form>
     </div>

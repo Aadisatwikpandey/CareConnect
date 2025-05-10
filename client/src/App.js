@@ -1,5 +1,6 @@
 import React from 'react';
 import './App.css';
+import Chatbot from './components/Chatbot';
 
 function App() {
   return (
@@ -129,6 +130,9 @@ function App() {
           <p>&copy; 2025 CareConnect. All rights reserved.</p>
         </div>
       </footer>
+
+      {/* Chatbot Integration */}
+      <Chatbot />
     </div>
   );
 }
